@@ -1,0 +1,12 @@
+themes/
+output/
+*.pyc
+srv.pid
+.vagrant/
+*.swp
+inventory.ini
+pelican.pid
+playbook.yml
+Makefile
+fabfile.py
+developer_server.sh
