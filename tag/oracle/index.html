@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+        <meta charset="utf-8" />
+        <title>sergeytsaplin.com - oracle</title>
+        <link rel="stylesheet" href="http://sergeytsaplin.com/theme/css/main.css" />
+        <link href="http://sergeytsaplin.com/feeds/all.atom.xml" type="application/atom+xml" rel="alternate" title="sergeytsaplin.com Atom Feed" />
+
+        <!--[if IE]>
+            <script src="https://html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+        <![endif]-->
+</head>
+
+<body id="index" class="home">
+<a href="https://github.com/SergeyTsaplin">
+<img style="position: absolute; top: 0; right: 0; border: 0;" src="https://s3.amazonaws.com/github/ribbons/forkme_right_red_aa0000.png" alt="Fork me on GitHub" />
+</a>
+        <header id="banner" class="body">
+                <h1><a href="http://sergeytsaplin.com/">sergeytsaplin.com </a></h1>
+                <nav><ul>
+                    <li><a href="http://sergeytsaplin.com/category/blog/">Blog</a></li>
+                    <li><a href="http://sergeytsaplin.com/pages/about-me-en.html">About Me</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+
+            <aside id="featured" class="body">
+                <article>
+                    <h1 class="entry-title"><a href="http://sergeytsaplin.com/oracle-pagination/">Пагинация в Oracle</a></h1>
+<footer class="post-info">
+        <abbr class="published" title="2013-05-17T01:00:00+03:00">
+                Published: Fri 17 May 2013
+        </abbr>
+        <!--
+        <address class="vcard author">
+                By                         <a class="url fn" href="http://sergeytsaplin.com/author/sergey-tsaplin/">Sergey Tsaplin</a>
+        </address>
+        -->
+<p>In <a href="http://sergeytsaplin.com/category/blog/">Blog</a>.</p>
+<p>tags: <a href="http://sergeytsaplin.com/tag/plsql/">pl/sql</a> <a href="http://sergeytsaplin.com/tag/oracle/">oracle</a> <a href="http://sergeytsaplin.com/tag/pagination/">pagination</a> <a href="http://sergeytsaplin.com/tag/paginatsiia/">пагинация</a> </p>
+</footer><!-- /.post-info --><p>Как известно, БД от Oracle не поддерживает инструкцию <code>LIMIT</code> в SQL-запросах. Поэтому на первых порах часто возникают вопросы, о том как реализовать пагинацию в Oracle. Тут на самом деле все просто. Достаточно использовать <code>rownum</code>, например вот так:</p>
+<div class="highlight"><pre><span class="k">select</span> <span class="o">*</span>
+<span class="k">from</span> <span class="n">some_table</span>
+<span class="k">where</span> <span class="o">&lt;</span><span class="n">some_conditions</span><span class="o">&gt;</span>
+   <span class="k">and</span> <span class="n">rownum</span> <span class="o">&gt;=</span> <span class="mi">1</span>
+   <span class="k">and</span> <span class="n">rownum</span> <span class="o">&lt;</span> <span class="mi">20</span>
+</pre></div>
+
+
+<p>Казалось бы ВОТ ОНО. Но не тут то было. Как только возникает потребность реализовать пагинацию над некой агрегированной выборкой (выборка с использованием групповых функций), приходится выполнить ряд дополнительных телодвижений:</p>
+<div class="highlight"><pre><span class="k">select</span> <span class="n">tmp</span><span class="p">.</span><span class="o">*</span>
+<span class="k">from</span>
+  <span class="p">(</span><span class="k">select</span> <span class="n">field1</span><span class="p">,</span>
+          <span class="k">count</span><span class="p">(</span><span class="n">field2</span><span class="p">)</span> <span class="n">field2_cnt</span>
+          <span class="k">sum</span><span class="p">(</span><span class="n">field3</span><span class="p">)</span> <span class="n">field3_sum</span>
+   <span class="k">from</span> <span class="n">some_table</span>
+   <span class="k">where</span> <span class="o">&lt;</span><span class="n">some_conditions</span><span class="o">&gt;</span>
+   <span class="k">group</span> <span class="k">by</span> <span class="n">field1</span><span class="p">)</span> <span class="n">tmp</span>
+<span class="k">where</span> <span class="n">rownum</span> <span class="o">&gt;=</span> <span class="mi">1</span>
+  <span class="k">and</span> <span class="n">rownum</span> <span class="o">&lt;</span> <span class="mi">20</span>
+</pre></div>
+
+
+<p>Что здесь происходит? Здесь сначала делается выборка по полям, удовлетворяющим условиям, выполняются групповые операции над ними, затем отсечку по rownum делаем уже над сгруппированными данными, таким образом пагинация работает, как и ожидалось. Вот такой вот небольшой хинт. Ну и всё это можно обернуть в некую хранимую функцию на pl/sql:</p>
+<div class="highlight"><pre><span class="k">function</span> <span class="n">get_padgination_cursor</span><span class="p">(</span><span class="n">page</span> <span class="k">in</span> <span class="nb">integer</span> <span class="o">:=</span> <span class="mf">1</span><span class="p">)</span> <span class="k">return</span> <span class="n">sys_ref_cursor</span> <span class="k">as</span>
+  <span class="n">cr</span> <span class="n">sys_ref_cursor</span><span class="p">;</span>
+  <span class="n">records_per_page</span> <span class="nb">integer</span> <span class="o">:=</span> <span class="mf">20</span><span class="p">;</span>
+  <span class="n">start_limit</span> <span class="nb">integer</span> <span class="o">:=</span> <span class="n">records_per_page</span> <span class="o">*</span> <span class="p">(</span><span class="n">page</span> <span class="o">-</span> <span class="mf">1</span><span class="p">)</span> <span class="o">+</span> <span class="mf">1</span><span class="p">;</span>
+  <span class="n">stop_limit</span> <span class="nb">integer</span> <span class="o">:=</span> <span class="n">start_limit</span> <span class="o">+</span> <span class="n">records_per_page</span><span class="p">;</span>
+<span class="k">begin</span>
+  <span class="k">open</span> <span class="n">cr</span> <span class="k">for</span>
+    <span class="k">select</span> <span class="n">tmp</span><span class="mf">.</span><span class="o">*</span>
+    <span class="k">from</span>
+      <span class="p">(</span><span class="k">select</span> <span class="n">field1</span><span class="p">,</span>
+              <span class="n">count</span><span class="p">(</span><span class="n">field2</span><span class="p">)</span> <span class="n">field2_cnt</span>
+              <span class="n">sum</span><span class="p">(</span><span class="n">field3</span><span class="p">)</span> <span class="n">field3_sum</span>
+       <span class="k">from</span> <span class="n">some_table</span>
+       <span class="k">where</span> <span class="o">&lt;</span><span class="n">some_conditions</span><span class="o">&gt;</span>
+       <span class="k">group</span> <span class="k">by</span> <span class="n">field1</span><span class="p">)</span> <span class="n">tmp</span>
+    <span class="k">where</span> <span class="n">rownum</span> <span class="o">&gt;=</span> <span class="n">start_limit</span>
+      <span class="k">and</span> <span class="n">rownum</span> <span class="o">&lt;</span> <span class="n">stop_limit</span><span class="p">;</span>
+
+  <span class="k">return</span> <span class="n">cr</span><span class="p">;</span>
+<span class="k">end</span><span class="p">;</span>
+</pre></div><p>There are <a href="http://sergeytsaplin.com/oracle-pagination/#disqus_thread">comments</a>.</p>                </article>
+            </aside><!-- /#featured -->
+        <section id="extras" class="body">
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+                            <li><a href="http://sergeytsaplin.com/feeds/all.atom.xml" type="application/atom+xml" rel="alternate">atom feed</a></li>
+
+                            <li><a href="https://twitter.com/SergeyTsaplin">twitter</a></li>
+                            <li><a href="https://www.facebook.com/sergeytsaplin">facebook</a></li>
+                            <li><a href="https://vk.com/sergey_tsaplin">vk</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a href="http://getpelican.com/">Pelican</a>, which takes great advantage of <a href="http://python.org">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a href="http://coding.smashingmagazine.com/2009/08/04/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+    <script type="text/javascript">
+    var _gaq = _gaq || [];
+    _gaq.push(['_setAccount', 'UA-66635850-1']);
+    _gaq.push(['_trackPageview']);
+    (function() {
+        var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+        ga.src = 'https://ssl.google-analytics.com/ga.js';
+        var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+    })();
+    </script>
+<script type="text/javascript">
+    var disqus_shortname = 'sergeytsaplincom';
+    (function () {
+        var s = document.createElement('script'); s.async = true;
+        s.type = 'text/javascript';
+        s.src = 'https://' + disqus_shortname + '.disqus.com/count.js';
+        (document.getElementsByTagName('HEAD')[0] || document.getElementsByTagName('BODY')[0]).appendChild(s);
+    }());
+</script>
+</body>
+</html>

@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+        <meta charset="utf-8" />
+        <title>sergeytsaplin.com - Authorization</title>
+        <link rel="stylesheet" href="http://sergeytsaplin.com/theme/css/main.css" />
+        <link href="http://sergeytsaplin.com/feeds/all.atom.xml" type="application/atom+xml" rel="alternate" title="sergeytsaplin.com Atom Feed" />
+
+        <!--[if IE]>
+            <script src="https://html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+        <![endif]-->
+</head>
+
+<body id="index" class="home">
+<a href="https://github.com/SergeyTsaplin">
+<img style="position: absolute; top: 0; right: 0; border: 0;" src="https://s3.amazonaws.com/github/ribbons/forkme_right_red_aa0000.png" alt="Fork me on GitHub" />
+</a>
+        <header id="banner" class="body">
+                <h1><a href="http://sergeytsaplin.com/">sergeytsaplin.com </a></h1>
+                <nav><ul>
+                    <li><a href="http://sergeytsaplin.com/category/blog/">Blog</a></li>
+                    <li><a href="http://sergeytsaplin.com/pages/about-me-en.html">About Me</a></li>
+                </ul></nav>
+        </header><!-- /#banner -->
+
+            <aside id="featured" class="body">
+                <article>
+                    <h1 class="entry-title"><a href="http://sergeytsaplin.com/redmine-ldap/">Авторизация в Redmine через ActiveDirectory с использованием ролей</a></h1>
+<footer class="post-info">
+        <abbr class="published" title="2012-12-23T19:00:00+02:00">
+                Published: Sun 23 December 2012
+        </abbr>
+        <!--
+        <address class="vcard author">
+                By                         <a class="url fn" href="http://sergeytsaplin.com/author/sergey-tsaplin/">Sergey Tsaplin</a>
+        </address>
+        -->
+<p>In <a href="http://sergeytsaplin.com/category/blog/">Blog</a>.</p>
+<p>tags: <a href="http://sergeytsaplin.com/tag/redmine/">Redmine</a> <a href="http://sergeytsaplin.com/tag/ldap/">LDAP</a> <a href="http://sergeytsaplin.com/tag/activedirectory/">ActiveDirectory</a> <a href="http://sergeytsaplin.com/tag/roles/">Roles</a> <a href="http://sergeytsaplin.com/tag/authorization/">Authorization</a> </p>
+</footer><!-- /.post-info --><p>Столкнулся недавно с, казалось бы, уже многократно пережеванной задачей - интеграцией Redmine и Active Directory, но с одни доп. условием - авторизация должна проходить только для пользователей из определенной группы в AD. Ну сказано - сделано. Поэтому, чтобы и самому не забыть, да и, вдруг, кому пригодиться, оставлю здесь пошаговую инструкцию.</p>
+<p>Для ясности договоримся, что домен у нас зовется domain.local</p>
+<p>Итак, первым делом, нам нужен служебный пользователь в AD с правами на чтение атрибутов всех пользователей домена (ну или отдельно взятой ОУшки). Сделать это несложно, пускай пользователя будут звать ldap_agent. Теперь в оснастке управления AD (пользователи и компьютеры) выбираем нужный домен/ОУшку, кликаем в меню Действия-&gt;Делегирование управления, в визарде всё понятно без слов, поэтому пропущу этот момент. Итак, двигаемся далее. Теперь займемся непосредственно Redmine'ом. Тут тоже все просто. Администрирование -&gt;Авторизация с помощью LDAP. Там добавляем новый способ аутентификации или правим уже существующий (если таковой имеется). Переходим в форму настройки аутентификации. Там пишем следующее:</p>
+<div class="highlight"><pre><span class="l-Scalar-Plain">Имя</span><span class="p-Indicator">:</span> <span class="l-Scalar-Plain">ActiveDirectory</span> <span class="c1"># любое имя, идентифицирующее текущий способ аутентификации</span>
+<span class="l-Scalar-Plain">Компьютер</span><span class="p-Indicator">:</span> <span class="l-Scalar-Plain">dc.domain.local</span> <span class="c1"># имя (или IP) хоста, выполняющего роль контроллера домена</span>
+<span class="l-Scalar-Plain">Порт</span><span class="p-Indicator">:</span> <span class="l-Scalar-Plain">389</span> <span class="c1"># порт, на котором висит сервис LDAP на контроллере домена (для ActiveDirectory по умолчанию 389)</span>
+<span class="l-Scalar-Plain">Учётная запись</span><span class="p-Indicator">:</span> <span class="l-Scalar-Plain">domain\ldap_agent</span> <span class="c1"># учетная запись в домене, под которой будем коннектиться к контроллеру и аутентифицировать пользователя (данному пользователю должны быть выданы права на чтение всех атрибутов всех пользователей домена или ОУшки, для которой должна работать авторизация)</span>
+<span class="l-Scalar-Plain">Пароль</span><span class="p-Indicator">:</span> <span class="l-Scalar-Plain">long_secret</span> <span class="c1"># пароль вышеуказанной учетной записи</span>
+<span class="l-Scalar-Plain">BaseDN</span><span class="p-Indicator">:</span> <span class="l-Scalar-Plain">dc=domain, dc=local</span> <span class="c1"># базовые параметры домена (и/или ОУшки в этом случае в начале строке следует дописать еще примерно вот это: ou=ouName,...)</span>
+<span class="l-Scalar-Plain">Фильтр LDAP</span><span class="p-Indicator">:</span> <span class="l-Scalar-Plain">(&amp;(objectClass=user)(memberOf=cn=RedmineUsers, ou=LocDomainGroups, dc=domain, dc=local))</span> <span class="c1"># Фильтр, позволяющий реализовать более гибкую систему авторизации, например, авторизовать пользователя только при наличии определенной роли. В качестве примера, пускаем только пользователей из группы ReadmineUsers, которая, в свою очередь, находится в ОУшке LocDomainGroups.</span>
+<span class="l-Scalar-Plain">Таймаут в секундах</span><span class="p-Indicator">:</span>  <span class="c1"># время ожидания ответа от контроллера - оставим пустым (и пусть весь мир подождет))))</span>
+<span class="l-Scalar-Plain">Создание пользователя на лету</span><span class="p-Indicator">:</span> <span class="l-Scalar-Plain">true</span> <span class="c1"># позволяет автоматически создавать пользователя при его первой успешной авторизации</span>
+</pre></div>
+
+
+<p>В разделе формы с атрибутами настраиваем соответствие атрибутов пользователя в Redmine к атрибутам пользователя в AD:</p>
+<div class="highlight"><pre><span class="l-Scalar-Plain">Пользователь</span><span class="p-Indicator">:</span> <span class="l-Scalar-Plain">sAMAccountName</span> <span class="c1"># наименование атрибута в LDAP, с которым будет сравниваться логин пользователя</span>
+<span class="l-Scalar-Plain">Имя</span><span class="p-Indicator">:</span> <span class="l-Scalar-Plain">givenName</span> <span class="c1"># наименование атрибута в LDAP, из которого будет автоматически подтягиваться имя пользователя в Redmine</span>
+<span class="l-Scalar-Plain">Фамилия</span><span class="p-Indicator">:</span> <span class="l-Scalar-Plain">sn</span> <span class="c1"># наименование атрибута в LDAP, из которого будет автоматически подтягиваться фамилия пользователя в Redmine</span>
+<span class="l-Scalar-Plain">email</span><span class="p-Indicator">:</span> <span class="l-Scalar-Plain">mail</span> <span class="c1"># наименование атрибута в LDAP, из которого будет автоматически подтягиваться email пользователя в Redmine</span>
+</pre></div>
+
+
+<p>Вот, собственно, и всё. Да, чуть не забыл. Этот способ был опробован на Redmine версии 2.1, в более ранних версиях не было возможности задавать дополнительные LDAP-фильтры</p><p>There are <a href="http://sergeytsaplin.com/redmine-ldap/#disqus_thread">comments</a>.</p>                </article>
+            </aside><!-- /#featured -->
+        <section id="extras" class="body">
+                <div class="social">
+                        <h2>social</h2>
+                        <ul>
+                            <li><a href="http://sergeytsaplin.com/feeds/all.atom.xml" type="application/atom+xml" rel="alternate">atom feed</a></li>
+
+                            <li><a href="https://twitter.com/SergeyTsaplin">twitter</a></li>
+                            <li><a href="https://www.facebook.com/sergeytsaplin">facebook</a></li>
+                            <li><a href="https://vk.com/sergey_tsaplin">vk</a></li>
+                        </ul>
+                </div><!-- /.social -->
+        </section><!-- /#extras -->
+
+        <footer id="contentinfo" class="body">
+                <address id="about" class="vcard body">
+                Proudly powered by <a href="http://getpelican.com/">Pelican</a>, which takes great advantage of <a href="http://python.org">Python</a>.
+                </address><!-- /#about -->
+
+                <p>The theme is by <a href="http://coding.smashingmagazine.com/2009/08/04/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+        </footer><!-- /#contentinfo -->
+
+    <script type="text/javascript">
+    var _gaq = _gaq || [];
+    _gaq.push(['_setAccount', 'UA-66635850-1']);
+    _gaq.push(['_trackPageview']);
+    (function() {
+        var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+        ga.src = 'https://ssl.google-analytics.com/ga.js';
+        var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+    })();
+    </script>
+<script type="text/javascript">
+    var disqus_shortname = 'sergeytsaplincom';
+    (function () {
+        var s = document.createElement('script'); s.async = true;
+        s.type = 'text/javascript';
+        s.src = 'https://' + disqus_shortname + '.disqus.com/count.js';
+        (document.getElementsByTagName('HEAD')[0] || document.getElementsByTagName('BODY')[0]).appendChild(s);
+    }());
+</script>
+</body>
+</html>
